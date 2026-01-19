@@ -44,6 +44,57 @@ export default function TablePage() {
     const [showOrderModal, setShowOrderModal] = useState(false);
     const [currentOrderId, setCurrentOrderId] = useState<string | null>(null); // Novo: manter ID do pedido atual
 
+    // Função para enviar notificação Telegram
+    const sendTelegramNotification = async (data: {
+        orderNumber: string;
+        items: any[];
+        customer: Customer;
+        total: number;
+        isAddition: boolean;
+    }) => {
+        try {
+            const telegramData = {
+                orderNumber: data.orderNumber,
+                date: new Date().toLocaleDateString('pt-BR'),
+                time: new Date().toLocaleTimeString('pt-BR'),
+                isAddition: data.isAddition,
+                customer: {
+                    name: data.customer.name,
+                    phone: data.customer.phone || '(96) 98765-4321',
+                    address: `Mesa ${tableId}`,
+                    email: data.customer.email
+                },
+                items: data.items.map(item => ({
+                    name: item.product_name,
+                    quantity: item.quantity,
+                    price: item.price,
+                    subtotal: item.total
+                })),
+                payment: {
+                    method: 'cash' as const
+                },
+                totals: {
+                    subtotal: data.total,
+                    deliveryFee: 0,
+                    total: data.total
+                },
+                observation: data.isAddition 
+                    ? `Adição de itens - Mesa ${tableId}`
+                    : 'Pedido realizado via QR Code'
+            };
+
+            await fetch('/api/send-telegram', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(telegramData),
+            });
+        } catch (error) {
+            console.error('Erro ao enviar notificação Telegram:', error);
+        }
+    };
+
     // Auth State
     const [currentCustomer, setCurrentCustomer] = useState<Customer | null>(null);
     const [showCustomerModal, setShowCustomerModal] = useState(false);
@@ -221,11 +272,21 @@ export default function TablePage() {
                 if (orderError) throw orderError;
                 targetOrderId = newOrder.id;
                 setCurrentOrderId(targetOrderId);
+
+                // Enviar notificação de NOVO PEDIDO
+                await sendTelegramNotification({
+                    orderNumber,
+                    items: cart,
+                    customer: currentCustomer,
+                    total: cart.reduce((sum, item) => sum + item.total, 0),
+                    isAddition: false // Primeiro pedido
+                });
+
             } else {
                 // Adicionar itens ao pedido existente
                 const { data: existingOrder } = await supabase
                     .from('orders')
-                    .select('items, total')
+                    .select('items, total, observation')
                     .eq('id', targetOrderId)
                     .single();
 
@@ -248,6 +309,15 @@ export default function TablePage() {
                             observation: currentObservation + `\n[${new Date().toLocaleTimeString()}] Itens adicionados`
                         })
                         .eq('id', targetOrderId);
+
+                    // Enviar notificação de ADIÇÃO DE ITENS
+                    await sendTelegramNotification({
+                        orderNumber: `MESA${tableId}-${targetOrderId.slice(-6)}`,
+                        items: cart,
+                        customer: currentCustomer,
+                        total: additionalTotal,
+                        isAddition: true // Adição de itens
+                    });
                 }
             }
 

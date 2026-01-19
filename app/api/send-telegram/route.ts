@@ -5,6 +5,7 @@ interface TelegramMessage {
   orderNumber: string;
   date: string;
   time: string;
+  isAddition?: boolean; // Novo: identificar se é adição de itens
   customer: {
     name: string;
     phone: string;
@@ -32,7 +33,7 @@ interface TelegramMessage {
 }
 
 function formatTelegramMessage(data: TelegramMessage): string {
-  const { orderNumber, date, time, customer, items, payment, totals, observation } = data;
+  const { orderNumber, date, time, isAddition, customer, items, payment, totals, observation } = data;
   
   // Formatar itens com suporte a múltiplos sabores
   const formattedItems = items.map(item => {
@@ -64,8 +65,13 @@ function formatTelegramMessage(data: TelegramMessage): string {
       break;
   }
 
+  // Montar título baseado no tipo de notificação
+  const title = isAddition 
+    ? `🍕 *ADIÇÃO DE ITENS - SABOR DA TERRA* 🍕`
+    : `🍕 *NOVO PEDIDO - SABOR DA TERRA* 🍕`;
+
   // Montar mensagem completa
-  let message = `🍕 *NOVO PEDIDO - SABOR DA TERRA* 🍕\n\n`;
+  let message = `${title}\n\n`;
   message += `📋 *NÚMERO DO PEDIDO:* #${orderNumber}\n`;
   message += `📅 *DATA:* ${date}\n`;
   message += `⏰ *HORA:* ${time}\n\n`;
