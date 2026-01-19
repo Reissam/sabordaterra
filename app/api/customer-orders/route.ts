@@ -3,6 +3,14 @@ import { supabase } from "../../../src/lib/supabase";
 
 export async function GET(req: NextRequest) {
   try {
+    // Verificar se Supabase está configurado
+    if (!supabase) {
+      return NextResponse.json(
+        { error: "Supabase não configurado" },
+        { status: 500 }
+      );
+    }
+
     const { searchParams } = new URL(req.url);
     const email = searchParams.get('email');
 

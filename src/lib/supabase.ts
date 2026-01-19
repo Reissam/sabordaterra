@@ -3,8 +3,11 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
+// Verificação em runtime (não em build time)
 if (!supabaseUrl || !supabaseKey) {
-  throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY')
+  console.warn('⚠️ Supabase credentials not found. Some features may not work.')
 }
 
-export const supabase = createClient(supabaseUrl, supabaseKey)
+export const supabase = supabaseUrl && supabaseKey 
+  ? createClient(supabaseUrl, supabaseKey)
+  : null

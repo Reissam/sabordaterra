@@ -136,6 +136,11 @@ export default function Page() {
     
     // Salvar pedido no Supabase
     try {
+      if (!supabase) {
+        console.warn('⚠️ Supabase não configurado - pedido não salvo na nuvem');
+        return;
+      }
+      
       const { error } = await supabase
         .from('orders')
         .insert({
