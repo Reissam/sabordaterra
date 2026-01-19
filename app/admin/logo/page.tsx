@@ -24,7 +24,7 @@ const LogoManager: React.FC = () => {
       await saveLogo(logoDataUrl);
 
       // Salvar no Supabase para persistir entre dispositivos/sessões
-      if (logoDataUrl) {
+      if (logoDataUrl && supabase) {
         const { data: existing, error: existingError } = await supabase
           .from('settings')
           .select('id')
@@ -58,7 +58,7 @@ const LogoManager: React.FC = () => {
             console.error('❌ Erro ao inserir logo no Supabase:', insertError);
           }
         }
-      } else {
+      } else if (supabase) {
         const { error: deleteError } = await supabase
           .from('settings')
           .delete()
