@@ -3,6 +3,11 @@ import { supabase } from '../lib/supabase';
 // Funções para gerenciar configurações
 export const getSetting = async (key: string): Promise<string | null> => {
   try {
+    if (!supabase) {
+      console.warn('⚠️ Supabase not configured - settings unavailable');
+      return null;
+    }
+    
     const { data, error } = await supabase
       .from('settings')
       .select('value')
