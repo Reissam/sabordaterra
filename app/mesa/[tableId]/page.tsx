@@ -42,6 +42,7 @@ export default function TablePage() {
     const [requestingBill, setRequestingBill] = useState(false);
     const [isComandaOpen, setIsComandaOpen] = useState(false);
     const [showOrderModal, setShowOrderModal] = useState(false);
+    const [currentOrderId, setCurrentOrderId] = useState<string | null>(null); // Novo: manter ID do pedido atual
 
     // Auth State
     const [currentCustomer, setCurrentCustomer] = useState<Customer | null>(null);
@@ -82,6 +83,12 @@ export default function TablePage() {
     };
 
     const loadProducts = async () => {
+        if (!supabase) {
+            console.warn('Supabase não configurado');
+            setLoading(false);
+            return;
+        }
+        
         const { data } = await supabase
             .from('products')
             .select('*')
@@ -93,6 +100,11 @@ export default function TablePage() {
     };
 
     const checkOpenComanda = async () => {
+        if (!supabase) {
+            console.warn('Supabase não configurado');
+            return;
+        }
+        
         // Buscar comanda ABERTA para esta mesa
         const { data: comanda } = await supabase
             .from('comandas')
@@ -161,7 +173,13 @@ export default function TablePage() {
         }
 
         try {
+            if (!supabase) {
+                toast.error('Supabase não configurado');
+                return;
+            }
+
             let currentComandaId = comandaId;
+            let targetOrderId = currentOrderId; // Usar pedido existente ou criar novo
 
             // Se não houver comanda aberta, abrir uma nova
             if (!currentComandaId) {
@@ -180,14 +198,67 @@ export default function TablePage() {
                 currentComandaId = newComanda.id;
             }
 
-            // Inserir itens
+            // Se não houver pedido aberto para esta mesa, criar um novo
+            if (!targetOrderId) {
+                const orderNumber = `MESA${tableId}-${Date.now().toString().slice(-6)}`;
+                
+                const { data: newOrder, error: orderError } = await supabase
+                    .from('orders')
+                    .insert({
+                        customer_id: currentCustomer.id,
+                        items: cart,
+                        total: cart.reduce((sum, item) => sum + item.total, 0),
+                        status: 'pending',
+                        payment_method: 'Comanda (Mesa)',
+                        address: `Mesa ${tableId}`,
+                        customer_name: currentCustomer.name,
+                        observation: 'Pedido realizado via QR Code',
+                        order_number: orderNumber
+                    })
+                    .select()
+                    .single();
+
+                if (orderError) throw orderError;
+                targetOrderId = newOrder.id;
+                setCurrentOrderId(targetOrderId);
+            } else {
+                // Adicionar itens ao pedido existente
+                const { data: existingOrder } = await supabase
+                    .from('orders')
+                    .select('items, total')
+                    .eq('id', targetOrderId)
+                    .single();
+
+                if (existingOrder) {
+                    const currentItems = existingOrder.items || [];
+                    const currentTotal = existingOrder.total || 0;
+                    const currentObservation = existingOrder.observation || 'Pedido realizado via QR Code';
+                    
+                    const newItems = [...currentItems, ...cart];
+                    const additionalTotal = cart.reduce((sum, item) => sum + item.total, 0);
+                    const newTotal = currentTotal + additionalTotal;
+
+                    // Atualizar pedido existente com novos itens e timestamp
+                    await supabase
+                        .from('orders')
+                        .update({
+                            items: newItems,
+                            total: newTotal,
+                            updated_at: new Date().toISOString(),
+                            observation: currentObservation + `\n[${new Date().toLocaleTimeString()}] Itens adicionados`
+                        })
+                        .eq('id', targetOrderId);
+                }
+            }
+
+            // Inserir itens na comanda (sempre)
             const itemsToInsert = cart.map(item => ({
                 comanda_id: currentComandaId,
                 product_name: item.product_name,
                 quantity: item.quantity,
                 price: item.price,
-                // total é gerado automaticamente pelo banco (quantity * price)
-                status: 'pending'
+                status: 'pending',
+                created_at: new Date().toISOString() // Registrar hora exata
             }));
 
             const { error: itemsError } = await supabase
@@ -196,34 +267,15 @@ export default function TablePage() {
 
             if (itemsError) throw itemsError;
 
-            // Inserir TAMBÉM na tabela 'orders' para aparecer no Painel Geral e Notificar Admin
-            const orderBatchTotal = cart.reduce((sum, item) => sum + item.total, 0);
-            const { error: orderError } = await supabase
-                .from('orders')
-                .insert({
-                    customer_id: currentCustomer.id, // Se tiver auth
-                    items: cart, // JSONB
-                    total: orderBatchTotal,
-                    status: 'pending',
-                    payment_method: 'Comanda (Mesa)',
-                    address: `Mesa ${tableId}`, // Identificador para o Admin
-                    customer_name: currentCustomer.name,
-                    observation: 'Pedido realizado via QR Code'
-                });
-
-            if (orderError) {
-                console.error('Erro ao criar notificação de pedido:', orderError);
-                // Não bloquear o fluxo se falhar apenas a notificação, mas logar
-            }
-
             // Atualizar total da comanda
-            const newTotal = comandaTotal + orderBatchTotal;
+            const orderBatchTotal = cart.reduce((sum, item) => sum + item.total, 0);
+            const newComandaTotal = comandaTotal + orderBatchTotal;
             await supabase
                 .from('comandas')
-                .update({ total: newTotal })
+                .update({ total: newComandaTotal })
                 .eq('id', currentComandaId);
 
-            toast.success('Pedido enviado para a cozinha!');
+            toast.success(targetOrderId ? 'Itens adicionados ao pedido existente!' : 'Novo pedido criado!');
             setCart([]);
             checkOpenComanda();
 
@@ -237,7 +289,7 @@ export default function TablePage() {
     };
 
     const requestBill = async () => {
-        if (!comandaId) return;
+        if (!comandaId || !supabase) return;
 
         try {
             await supabase
