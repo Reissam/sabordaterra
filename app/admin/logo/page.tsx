@@ -23,8 +23,14 @@ const LogoManager: React.FC = () => {
       // Salvar no IndexedDB (com fallback para localStorage)
       await saveLogo(logoDataUrl);
 
+      // Verificar se supabase está disponível antes de usar
+      if (!supabase) {
+        console.warn('⚠️ Supabase não está disponível. Logo salva apenas localmente.');
+        return;
+      }
+
       // Salvar no Supabase para persistir entre dispositivos/sessões
-      if (logoDataUrl && supabase) {
+      if (logoDataUrl) {
         const { data: existing, error: existingError } = await supabase
           .from('settings')
           .select('id')
@@ -58,7 +64,7 @@ const LogoManager: React.FC = () => {
             console.error('❌ Erro ao inserir logo no Supabase:', insertError);
           }
         }
-      } else if (supabase) {
+      } else {
         const { error: deleteError } = await supabase
           .from('settings')
           .delete()
